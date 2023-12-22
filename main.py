@@ -10,27 +10,22 @@
 #
 # install_whl(tensorinjo)
 # install_whl(stelargrfinjo)
-
-
-
-import pandas as pd
+import math
+import openpyxl
 import numpy as np
-
-import stellargraph as sg
-from stellargraph.mapper import PaddedGraphGenerator
-from stellargraph.layer import DeepGraphCNN
-from stellargraph import StellarGraph
-
+import pandas as pd
+import tensorflow as tf
+import tensorflow.keras.backend as K
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, roc_auc_score, f1_score, \
+    matthews_corrcoef
+from sklearn.model_selection import StratifiedKFold, train_test_split
 from stellargraph import datasets
-
-from sklearn import model_selection
-
+from stellargraph.layer import DeepGraphCNN
+from stellargraph.mapper import PaddedGraphGenerator
 from tensorflow.keras import Model
-from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Dense, Conv1D, MaxPool1D, Dropout, Flatten
 from tensorflow.keras.losses import binary_crossentropy
-import tensorflow as tf
-
+from tensorflow.keras.optimizers import Adam
 
 dataset = datasets.PROTEINS()
 graphs, graph_labels = dataset.load()
@@ -39,7 +34,6 @@ print("______________________________________")
 print(graphs[0].info())
 print("______________________________________")
 print(graphs[1].info())
-
 
 summary = pd.DataFrame(
     [(g.number_of_nodes(), g.number_of_edges()) for g in graphs],
@@ -56,7 +50,6 @@ print(graph_labels.value_counts().to_frame())
 print("______________________________________")
 graph_labels = pd.get_dummies(graph_labels, drop_first=True)
 print(graph_labels.value_counts().to_frame())
-
 
 generator = PaddedGraphGenerator(graphs=graphs)
 
@@ -84,45 +77,129 @@ x_out = Dropout(rate=0.5)(x_out)
 
 predictions = Dense(units=1, activation="sigmoid")(x_out)
 
-
 model = Model(inputs=x_inp, outputs=predictions)
 
 model.compile(
     optimizer=Adam(lr=0.0001), loss=binary_crossentropy, metrics=["acc"],
 )
 
+callback = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True)
 
-train_graphs, test_graphs = model_selection.train_test_split(
-    graph_labels, train_size=0.9, test_size=None, stratify=graph_labels,
-)
-
-gen = PaddedGraphGenerator(graphs=graphs)
-
-train_gen = gen.flow(
-    list(train_graphs.index - 1),
-    targets=train_graphs.values,
-    batch_size=50,
-    symmetric_normalization=False,
-)
-
-test_gen = gen.flow(
-    list(test_graphs.index - 1),
-    targets=test_graphs.values,
-    batch_size=1,
-    symmetric_normalization=False,
-)
+cv = StratifiedKFold(n_splits=10, shuffle=True)
 
 epochs = 100
-
-history = model.fit(
-    train_gen, epochs=epochs, verbose=1, validation_data=test_gen, shuffle=True,
-)
-
-sg.utils.plot_history(history)
-
-test_metrics = model.evaluate(test_gen)
-print("\nTest Set Metrics:")
-for name, val in zip(model.metrics_names, test_metrics):
-    print("\t{}: {:0.4f}".format(name, val))
+gm_values = []
+precision_values = []
+recall_values = []
+f1_values = []
+roc_auc_values = []
+fpr_values = []
+tpr_values = []
+mcc_values = []
+histories = []
 
 
+def rest_of_metrics(y_true, y_pred):
+    y_pred = K.cast(K.round(y_pred), K.floatx())
+    y_true = K.cast(y_true, K.floatx())
+
+    y_pred_np = K.eval(y_pred)  # Convert y_pred tensor to NumPy array
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred_np).ravel()
+
+    fpr = fp / (fp + tn)
+    tpr = tp / (tp + fn)
+    tnr = tn / (tn + fp)
+    gm = math.sqrt(tpr * tnr)
+    precision = precision_score(y_true, y_pred)
+    recall = recall_score(y_true, y_pred)
+    f1 = f1_score(y_true, y_pred)
+
+    print("GM: ", gm)
+    print("Precision: ", precision)
+    print("Recall: ", recall)
+    print("F1: ", f1)
+
+    gm_values.append(K.get_value(gm))
+    precision_values.append(K.get_value(precision))
+    recall_values.append(K.get_value(recall))
+    f1_values.append(K.get_value(f1))
+    fpr_values.append(K.get_value(fpr))
+    tpr_values.append(K.get_value(tpr))
+
+
+def roc_auc_metric(y_true, y_pred):
+    y_pred = K.cast(K.round(y_pred), K.floatx())
+    y_true = K.cast(y_true, K.floatx())
+
+    roc_auc = roc_auc_score(y_true, y_pred)
+    print("ROC AUC: ", roc_auc)
+    roc_auc_values.append(K.get_value(roc_auc))
+
+
+def mcc_metric(y_true, y_pred):
+    y_pred = np.array(y_pred)
+    y_true = np.array(y_true)
+    y_pred = y_pred.round()
+    mcc = matthews_corrcoef(y_true, y_pred)
+    print("MCC: ", mcc)
+    mcc_values.append(mcc)
+
+
+for train_index, test_index in cv.split(graphs, graph_labels):
+    graphs = np.array(graphs)
+    X_train, X_test = graphs[train_index.astype(int)], graphs[test_index.astype(int)]
+    y_train, y_test = graph_labels.iloc[train_index.astype(int)], graph_labels.iloc[test_index.astype(int)]
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42)
+    gen = PaddedGraphGenerator(graphs=graphs)
+
+    train_gen = gen.flow(
+        X_train,
+        targets=y_train,
+        batch_size=32,
+        symmetric_normalization=False,
+    )
+
+    val_gen = gen.flow(
+        X_val,
+        targets=y_val,
+        batch_size=50,
+        symmetric_normalization=False,
+    )
+
+    test_gen = gen.flow(
+        X_test,
+        targets=y_test,
+        batch_size=50,
+        symmetric_normalization=False,
+    )
+
+    history = model.fit(
+        train_gen, epochs=epochs, verbose=1, validation_data=val_gen, shuffle=True, callbacks=[callback]
+    )
+
+    histories.append(history)
+
+    y_pred = model.predict(test_gen)
+    y_pred = np.reshape(y_pred, (-1,))
+    roc_auc_metric(y_test, y_pred)
+    y_pred = [0 if prob < 0.5 else 1 for prob in y_pred]
+
+    y_test = y_test.to_numpy()
+    y_test = np.reshape(y_test, (-1,))
+
+    rest_of_metrics(y_test, y_pred)
+    mcc_metric(y_test, y_pred)
+
+data = {
+    "Metric": ["MCC", "GM", "Precision", "Recall", "F1", "ROC AUC", "FPR", "TPR"],
+    "Average": [np.mean(mcc_values), np.mean(gm_values), np.mean(precision_values), np.mean(recall_values),
+                np.mean(f1_values), np.mean(roc_auc_values), np.mean(fpr_values), np.mean(tpr_values)],
+    "Maximum": [np.max(mcc_values), np.max(gm_values), np.max(precision_values), np.max(recall_values),
+                np.max(f1_values), np.max(roc_auc_values), np.max(fpr_values), np.max(tpr_values)],
+    "Minimum": [np.min(mcc_values), np.min(gm_values), np.min(precision_values), np.min(recall_values),
+                np.min(f1_values), np.min(roc_auc_values), np.min(fpr_values), np.min(tpr_values)]
+}
+
+df = pd.DataFrame(data)
+
+df.to_excel("metrics.xlsx", index=False)
