@@ -11,7 +11,8 @@
 # install_whl(tensorinjo)
 # install_whl(stelargrfinjo)
 import math
-import openpyxl
+from IPython.display import display
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -26,7 +27,7 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense, Conv1D, MaxPool1D, Dropout, Flatten
 from tensorflow.keras.losses import binary_crossentropy
 from tensorflow.keras.optimizers import Adam
-
+import seaborn as sns
 dataset = datasets.PROTEINS()
 graphs, graph_labels = dataset.load()
 
@@ -39,6 +40,15 @@ summary = pd.DataFrame(
     [(g.number_of_nodes(), g.number_of_edges()) for g in graphs],
     columns=["nodes", "edges"],
 )
+corr_matrix = summary.corr()
+
+    
+
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', square=True)
+plt.title('Heatmap of Correlation between Nodes and Edges in PROTEINS Dataset')
+plt.show()
 print("______________________________________")
 print(summary.describe().round(1))
 
@@ -202,4 +212,86 @@ data = {
 
 df = pd.DataFrame(data)
 
-df.to_excel("metrics.xlsx", index=False)
+#df.to_excel("metrics.xlsx", index=False)
+# plt.figure(figsize=(10, 8))
+# sns.heatmap(df, annot=True, cmap='coolwarm', fmt=".2f")
+# plt.title('Performance Metrics Heatmap')
+# plt.show()
+
+display(df)
+df = df.set_index('Metric')
+
+# Transpose the dataframe to make the metrics as columns for the heatmap
+df_t = df.T
+
+# Create a heatmap
+plt.figure(figsize=(10, 6))
+heatmap = sns.heatmap(df_t, annot=True, cmap='viridis')
+plt.title('Heatmap of Metric Values')
+plt.show()
+
+plt.figure(figsize=(12, 4))
+plt.subplot(1, 3, 1)
+plt.plot(history.history["acc"])
+plt.title("Accuracy")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+
+plt.subplot(1, 3, 2)
+plt.plot(history.history["loss"])
+plt.title("Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+
+plt.subplot(1, 3, 3)
+plt.plot(history.history["val_acc"])
+plt.title("Validation Accuracy")
+plt.xlabel("Epoch")
+plt.ylabel("Validation Accuracy")
+
+
+cm = confusion_matrix(y_test, y_pred)
+
+# Plotting the confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Predicted 0', 'Predicted 1'], yticklabels=['Actual 0', 'Actual 1'])
+plt.ylabel('Actual label')
+plt.xlabel('Predicted label')
+plt.title('Confusion Matrix')
+plt.show()
+
+# plt.figure(figsize=(8, 6))  # Optional: Set the size of the plot
+# sns.heatmap(df, annot=True, cmap='coolwarm', fmt='.1f', linewidths=0.5)
+# plt.title('Heatmap of DataFrame')
+# plt.show()
+
+# print(predictions)
+
+
+# Transpose the DataFrame to make the metrics as columns for the heatmap
+
+
+# Create a heatmap
+# plt.figure(figsize=(10, 6))
+# heatmap = sns.heatmap(df_t, annot=True, cmap='viridis')
+# plt.title('Heatmap of Metric Values')
+# plt.show()
+
+
+sns.pairplot(summary)
+plt.show()
+
+# sns.pairplot(pd.DataFrame(dataset))
+# plt.show()
+# Create a heatmap
+if 'Metric' in df.columns:
+    df = df.set_index('Metric')
+
+# Transpose the dataframe for the heatmap
+df_t = df.T
+
+# Create the heatmap
+plt.figure(figsize=(10, 6))
+heatmap = sns.heatmap(df_t, annot=True, cmap='viridis', fmt=".2f")
+plt.title('Heatmap of Metric Values')
+plt.show()
