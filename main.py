@@ -42,7 +42,7 @@ summary = pd.DataFrame(
 )
 corr_matrix = summary.corr()
 
-    
+
 
 
 plt.figure(figsize=(8, 6))
@@ -224,10 +224,23 @@ df = df.set_index('Metric')
 # Transpose the dataframe to make the metrics as columns for the heatmap
 df_t = df.T
 
-# Create a heatmap
-plt.figure(figsize=(10, 6))
-heatmap = sns.heatmap(df_t, annot=True, cmap='viridis')
-plt.title('Heatmap of Metric Values')
+df_metrics = pd.DataFrame({
+    'MCC': mcc_values,
+    'GM': gm_values,
+    'Precision': precision_values,
+    'Recall': recall_values,
+    'F1': f1_values,
+    'ROC AUC': roc_auc_values,
+    'FPR': fpr_values,
+    'TPR': tpr_values
+})
+
+# Creating the boxplot for each performance metric
+plt.figure(figsize=(12, 6))
+sns.boxplot(data=df_metrics)
+plt.title('Boxplot of Performance Metrics')
+plt.ylabel('Metric Value')
+plt.xlabel('Metric')
 plt.show()
 
 plt.figure(figsize=(12, 4))
